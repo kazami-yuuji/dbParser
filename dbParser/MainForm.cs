@@ -149,35 +149,35 @@ namespace dbParser
 
                         node = xmlDoc.SelectSingleNode("//root/document/title");
                         if (node != null)
-                            title = node.InnerText;
+                            title = node.InnerText.Trim();
 
                         node = xmlDoc.SelectSingleNode("//root/document/authors");
                         if (node != null)
-                            authors = node.InnerText;
+                            authors = node.InnerText.Trim();
 
                         node = xmlDoc.SelectSingleNode("//root/document/pubtitle");
                         if (node != null)
-                            pubtitle = node.InnerText;
+                            pubtitle = node.InnerText.Trim();
 
                         node = xmlDoc.SelectSingleNode("//root/document/pubtype");
                         if (node != null)
-                            pubtype = node.InnerText;
+                            pubtype = node.InnerText.Trim();
 
                         node = xmlDoc.SelectSingleNode("//root/document/publisher");
                         if (node != null)
-                            publisher = node.InnerText;
+                            publisher = node.InnerText.Trim();
 
                         node = xmlDoc.SelectSingleNode("//root/document/abstract");
                         if (node != null)
-                            description = node.InnerText;
+                            description = node.InnerText.Trim();
 
                         node = xmlDoc.SelectSingleNode("//root/document/mdurl");
                         if (node != null)
-                            mdurl = node.InnerText;
+                            mdurl = node.InnerText.Trim();
 
                         node = xmlDoc.SelectSingleNode("//root/document/pdf");
                         if (node != null)
-                            pdf = node.InnerText;
+                            pdf = node.InnerText.Trim();
 
                         XmlNodeList xmlNodesList;
 
@@ -188,7 +188,7 @@ namespace dbParser
                                 select xmlNode.ChildNodes
                                 into childNodes
                                 from XmlNode childNode in childNodes
-                                select childNode.InnerText);
+                                select childNode.InnerText.Trim());
                         }
 
                         xmlNodesList = xmlDoc.SelectNodes("//root/document/uncontrolledterms");
@@ -198,7 +198,7 @@ namespace dbParser
                                 select xmlNode.ChildNodes
                                 into childNodes
                                 from XmlNode childNode in childNodes
-                                select childNode.InnerText);
+                                select childNode.InnerText.Trim());
                         }
 
 
