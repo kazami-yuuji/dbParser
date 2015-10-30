@@ -31,8 +31,8 @@ namespace dbParser
         private int _threadsCounter; 
         private int _count;
         private bool _close;
-
-        private readonly DbConnection _dbConnection;
+        
+        private readonly string _dbConnectionString;
 
         public MainForm()
         {
@@ -42,8 +42,6 @@ namespace dbParser
             _lockerEnd = new object();
             _close = false;
             _threadsCounter = 0;
-            
-            _lockerDb = new object();
 
             DbConnectionStringBuilder connectionStringBuilder = new NpgsqlConnectionStringBuilder();
             connectionStringBuilder.Add("Server", "localhost");
@@ -51,8 +49,7 @@ namespace dbParser
             connectionStringBuilder.Add("User Id", "postgres");
             connectionStringBuilder.Add("Password", "1");
             connectionStringBuilder.Add("Database", "project");
-            _dbConnection = new NpgsqlConnection(connectionStringBuilder.ToString());
-            _dbConnection.Open();
+            _dbConnectionString = connectionStringBuilder.ToString();
         }
 
         private void StartButton_Click(object sender, EventArgs eargs)
@@ -72,8 +69,6 @@ namespace dbParser
         }
         
         private readonly object _lockerEnd;
-
-        private readonly object _lockerDb;
 
         private void MeasureTime(object stateInfo)
         {
@@ -99,6 +94,8 @@ namespace dbParser
             if (!(bounds is RecordBounds))
                 throw new ApplicationException();
             Interlocked.Increment(ref _threadsCounter);
+            DbConnection dbConnection = new NpgsqlConnection(_dbConnectionString);
+            dbConnection.Open();
             var recordBounds = (RecordBounds)bounds;
             var i = recordBounds.Begin;
             while (i < recordBounds.End && !_close)
@@ -196,7 +193,7 @@ namespace dbParser
                                                        select childNode.InnerText.Trim());
                         }
 
-                        var sqlCommand = _dbConnection.CreateCommand();
+                        var sqlCommand = dbConnection.CreateCommand();
                         sqlCommand.CommandType = CommandType.StoredProcedure;
                         sqlCommand.CommandText = "insert_article";
 
@@ -254,11 +251,8 @@ namespace dbParser
                         thesaurustermsParameter.DbType = DbType.Object;
                         thesaurustermsParameter.Value = thesaurusTerms.ToArray();
                         sqlCommand.Parameters.Add(thesaurustermsParameter);
-
-                        lock (_lockerDb)
-                        {
-                            sqlCommand.ExecuteNonQuery();
-                        }
+                        
+                        sqlCommand.ExecuteNonQuery();
 
                         RecordsLabel.Invoke((MethodInvoker)delegate
                         {
@@ -269,7 +263,6 @@ namespace dbParser
                             RecordsProgressBar.PerformStep();
                         });
                     }
-                    i++;
                 }
                 catch (WebException ex)
                 {
@@ -289,6 +282,7 @@ namespace dbParser
                             throw new ArgumentOutOfRangeException();
                     }
                 }
+                i++;
             }
             Interlocked.Decrement(ref _threadsCounter);
         }
@@ -309,8 +303,7 @@ namespace dbParser
             {
                 ThreadPool.QueueUserWorkItem(ThreadEndWaiting);
                 e.Cancel = true;
-            } else if (_dbConnection.State == ConnectionState.Open)
-                _dbConnection.Close();
+            }
         }
     }
 }
