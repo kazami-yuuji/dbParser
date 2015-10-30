@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -19,23 +18,19 @@ namespace dbParser
         {
             public readonly int Begin;
             public readonly int End;
-            public readonly int ThreadNumber;
 
-            public RecordBounds(int begin, int end, int threadNumber)
+            public RecordBounds(int begin, int end)
             {
                 Begin = begin;
                 End = end;
-                ThreadNumber = threadNumber;
             }
         }
 
-        private const int RecordsMax = 3795666;
+        private const int RecordsMax = 3800377;
         private const int ThreadsNumber = 5;
         private int _threadsCounter; 
         private int _count;
         private bool _close;
-
-        private readonly StreamWriter _outputFile;
 
         private readonly DbConnection _dbConnection;
 
@@ -44,19 +39,17 @@ namespace dbParser
             InitializeComponent();
             RecordsProgressBar.Maximum = RecordsMax;
             _count = 0;
-            _lockerBegin = new object();
             _lockerEnd = new object();
             _close = false;
             _threadsCounter = 0;
-
-            _outputFile = new StreamWriter("output.txt");
-            _lockerFile = new object();
+            
+            _lockerDb = new object();
 
             DbConnectionStringBuilder connectionStringBuilder = new NpgsqlConnectionStringBuilder();
             connectionStringBuilder.Add("Server", "localhost");
             connectionStringBuilder.Add("Port", "5432");
-            connectionStringBuilder.Add("User Id", "test");
-            connectionStringBuilder.Add("Password", "1234");
+            connectionStringBuilder.Add("User Id", "postgres");
+            connectionStringBuilder.Add("Password", "1");
             connectionStringBuilder.Add("Database", "project");
             _dbConnection = new NpgsqlConnection(connectionStringBuilder.ToString());
             _dbConnection.Open();
@@ -71,18 +64,16 @@ namespace dbParser
             {
                 var b = begin;
                 var e = end;
-                var index = i;
-                ThreadPool.QueueUserWorkItem(Parse, new RecordBounds(b, e, index + 1));
+                ThreadPool.QueueUserWorkItem(Parse, new RecordBounds(b, e));
                 begin += part;
                 end += part;
             }
             ThreadPool.QueueUserWorkItem(MeasureTime);
         }
-
-        private readonly object _lockerBegin;
+        
         private readonly object _lockerEnd;
 
-        private readonly object _lockerFile;
+        private readonly object _lockerDb;
 
         private void MeasureTime(object stateInfo)
         {
@@ -109,10 +100,6 @@ namespace dbParser
                 throw new ApplicationException();
             Interlocked.Increment(ref _threadsCounter);
             var recordBounds = (RecordBounds)bounds;
-            //lock (_lockerBegin)
-            //{
-            //    MessageBox.Show($"Thread {recordBounds.ThreadNumber} has started!");
-            //}
             var i = recordBounds.Begin;
             while (i < recordBounds.End && !_close)
             {
@@ -141,13 +128,13 @@ namespace dbParser
                             pdf = string.Empty;
 
                         List<string> controlledTerms = new List<string>(),
-                            uncontrolledTerms = new List<string>();
+                            uncontrolledTerms = new List<string>(),
+                            thesaurusTerms = new List<string>();
 
                         var xmlDoc = new XmlDocument();
                         xmlDoc.LoadXml(xml);
-                        XmlNode node;
 
-                        node = xmlDoc.SelectSingleNode("//root/document/title");
+                        var node = xmlDoc.SelectSingleNode("//root/document/title");
                         if (node != null)
                             title = node.InnerText.Trim();
 
@@ -179,9 +166,7 @@ namespace dbParser
                         if (node != null)
                             pdf = node.InnerText.Trim();
 
-                        XmlNodeList xmlNodesList;
-
-                        xmlNodesList = xmlDoc.SelectNodes("//root/document/controlledterms");
+                        var xmlNodesList = xmlDoc.SelectNodes("//root/document/controlledterms");
                         if (xmlNodesList != null)
                         {
                             controlledTerms.AddRange(from XmlNode xmlNode in xmlNodesList
@@ -201,17 +186,78 @@ namespace dbParser
                                 select childNode.InnerText.Trim());
                         }
 
-
-                        string controlledTermsString = "{" + controlledTerms.Aggregate("", (aggr, str) => aggr + "[" + str + "]") + "}",
-                            uncontrolledTermsString = "{" + uncontrolledTerms.Aggregate("", (aggr, str) => aggr + "[" + str + "]") + "}";
-
-                        lock (_lockerFile)
+                        xmlNodesList = xmlDoc.SelectNodes("//root/document/thesaurusterms");
+                        if (xmlNodesList != null)
                         {
-                            _outputFile.WriteLine(
-                                $"title: {title} authors: {authors} pubtitle: {pubtitle} pubtype: {pubtype} " +
-                                $"publisher: {publisher} description: {description} mdurl: {mdurl} pdf: {pdf} " +
-                                $"controlledterms: {controlledTermsString} uncontrolledterms: {uncontrolledTermsString}");
-                            _outputFile.Flush();
+                            thesaurusTerms.AddRange(from XmlNode xmlNode in xmlNodesList
+                                                       select xmlNode.ChildNodes
+                                into childNodes
+                                                       from XmlNode childNode in childNodes
+                                                       select childNode.InnerText.Trim());
+                        }
+
+                        var sqlCommand = _dbConnection.CreateCommand();
+                        sqlCommand.CommandType = CommandType.StoredProcedure;
+                        sqlCommand.CommandText = "insert_article";
+
+                        var titleParameter = sqlCommand.CreateParameter();
+                        titleParameter.DbType = DbType.String;
+                        titleParameter.Value = title;
+                        sqlCommand.Parameters.Add(titleParameter);
+
+                        var authorsParameter = sqlCommand.CreateParameter();
+                        authorsParameter.DbType = DbType.Object;
+                        authorsParameter.Value = (from element in authors.Trim().Split(';') select element.Trim()).ToArray();
+                        sqlCommand.Parameters.Add(authorsParameter);
+
+                        var pubtitleParameter = sqlCommand.CreateParameter();
+                        pubtitleParameter.DbType = DbType.String;
+                        pubtitleParameter.Value = pubtitle;
+                        sqlCommand.Parameters.Add(pubtitleParameter);
+
+                        var pubtypeParameter = sqlCommand.CreateParameter();
+                        pubtypeParameter.DbType = DbType.String;
+                        pubtypeParameter.Value = pubtype;
+                        sqlCommand.Parameters.Add(pubtypeParameter);
+
+                        var publisherParameter = sqlCommand.CreateParameter();
+                        publisherParameter.DbType = DbType.String;
+                        publisherParameter.Value = publisher;
+                        sqlCommand.Parameters.Add(publisherParameter);
+
+                        var descriptionParameter = sqlCommand.CreateParameter();
+                        descriptionParameter.DbType = DbType.String;
+                        descriptionParameter.Value = description;
+                        sqlCommand.Parameters.Add(descriptionParameter);
+
+                        var mdurlParameter = sqlCommand.CreateParameter();
+                        mdurlParameter.DbType = DbType.String;
+                        mdurlParameter.Value = mdurl;
+                        sqlCommand.Parameters.Add(mdurlParameter);
+
+                        var pdfParameter = sqlCommand.CreateParameter();
+                        pdfParameter.DbType = DbType.String;
+                        pdfParameter.Value = pdf;
+                        sqlCommand.Parameters.Add(pdfParameter);
+
+                        var controlledtermsParameter = sqlCommand.CreateParameter();
+                        controlledtermsParameter.DbType = DbType.Object;
+                        controlledtermsParameter.Value = controlledTerms.ToArray();
+                        sqlCommand.Parameters.Add(controlledtermsParameter);
+
+                        var uncontrolledtermsParameter = sqlCommand.CreateParameter();
+                        uncontrolledtermsParameter.DbType = DbType.Object;
+                        uncontrolledtermsParameter.Value = uncontrolledTerms.ToArray();
+                        sqlCommand.Parameters.Add(uncontrolledtermsParameter);
+
+                        var thesaurustermsParameter = sqlCommand.CreateParameter();
+                        thesaurustermsParameter.DbType = DbType.Object;
+                        thesaurustermsParameter.Value = thesaurusTerms.ToArray();
+                        sqlCommand.Parameters.Add(thesaurustermsParameter);
+
+                        lock (_lockerDb)
+                        {
+                            sqlCommand.ExecuteNonQuery();
                         }
 
                         RecordsLabel.Invoke((MethodInvoker)delegate
@@ -263,17 +309,8 @@ namespace dbParser
             {
                 ThreadPool.QueueUserWorkItem(ThreadEndWaiting);
                 e.Cancel = true;
-            }
-            if (_dbConnection.State == ConnectionState.Open)
+            } else if (_dbConnection.State == ConnectionState.Open)
                 _dbConnection.Close();
-            //while (_threadsCounter != ThreadsNumber)
-            //{
-
-            //}
-            //lock (_lockerFile)
-            //{
-            //    _outputFile.Close();
-            //}
         }
     }
 }
