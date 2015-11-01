@@ -39,7 +39,6 @@ namespace dbParser
             InitializeComponent();
             RecordsProgressBar.Maximum = RecordsMax;
             _count = 0;
-            //_lockerEnd = new object();
             _close = false;
             _threadsCounter = 0;
 
@@ -67,8 +66,6 @@ namespace dbParser
             }
             ThreadPool.QueueUserWorkItem(MeasureTime);
         }
-        
-        //private readonly object _lockerEnd;
 
         private void MeasureTime(object stateInfo)
         {
@@ -266,21 +263,7 @@ namespace dbParser
                 }
                 catch (WebException)
                 {
-                    //DialogResult result;
-                    //lock (_lockerEnd)
-                    //{
-                    //    result =
-                    //        MessageBox.Show(ex.Message, @"Error", MessageBoxButtons.RetryCancel, MessageBoxIcon.Error);
-                    //}
-                    //switch (result)
-                    //{
-                    //    case DialogResult.Cancel:
-                    //        return;
-                    //    case DialogResult.Retry:
-                    //        break;
-                    //    default:
-                    //        throw new ArgumentOutOfRangeException();
-                    //}
+
                 }
                 i++;
             }
